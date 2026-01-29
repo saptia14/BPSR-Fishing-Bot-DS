@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Configurações</title>
+    <style>
+        body {
+            background-color: #1a1a1a; color: #fff;
+            font-family: 'Segoe UI', sans-serif;
+            padding: 20px; user-select: none;
+        }
+        h2 { margin-top: 0; color: #4CAF50; font-size: 1.2rem; border-bottom: 1px solid #333; padding-bottom: 10px; }
+
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; color: #ccc; font-size: 0.9rem; }
+        small { display: block; margin-top: 5px; color: #666; font-size: 0.8rem; }
+
+        input[type="number"] {
+            width: 100%; padding: 10px; background: #2a2a2a;
+            border: 1px solid #444; color: white; border-radius: 6px;
+            box-sizing: border-box;
+        }
+
+        .range-wrapper { display: flex; align-items: center; gap: 15px; }
+        input[type="range"] { flex: 1; }
+        .val-display { font-weight: bold; color: #4CAF50; min-width: 40px; text-align: right;}
+
+        .actions { margin-top: 30px; text-align: right; }
+        button {
+            padding: 10px 20px; background: #4CAF50; border: none;
+            border-radius: 6px; color: white; font-weight: bold; cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover { background: #45a049; }
+        button:active { transform: scale(0.98); }
+
+        /* Feedback visual */
+        #msgSaved { color: #69f0ae; font-size: 0.8rem; margin-right: 10px; opacity: 0; transition: opacity 0.5s; }
+        #msgSaved.show { opacity: 1; }
+    </style>
+</head>
+<body>
+<h2>Ajustes do Bot</h2>
+
+<div class="form-group">
+    <label>Precisão de Deteção</label>
+    <div class="range-wrapper">
+        <input type="range" id="cfgPrecision" min="0.5" max="0.95" step="0.05">
+        <span id="valPrecision" class="val-display">0.65</span>
+    </div>
+    <small>Valores mais altos = Menos erros, mas pode não detetar.</small>
+</div>
+
+<div class="form-group">
+    <label>Delay de Lançamento (Segundos)</label>
+    <input type="number" id="cfgDelay" step="0.1" min="0.1">
+</div>
+
+<div class="form-group">
+    <label>Limite de FPS (0 = Ilimitado)</label>
+    <input type="number" id="cfgFps" min="0" max="144">
+    <small>Reduz o uso de CPU se definires 30 ou 60.</small>
+</div>
+
+<div class="actions">
+    <span id="msgSaved">Salvo!</span>
+    <button id="btnSave">Salvar Alterações</button>
+</div>
+
+<script>
+    const inpPrecision = document.getElementById('cfgPrecision');
+    const valPrecision = document.getElementById('valPrecision');
+    const inpDelay = document.getElementById('cfgDelay');
+    const inpFps = document.getElementById('cfgFps');
+    const btnSave = document.getElementById('btnSave');
+    const msgSaved = document.getElementById('msgSaved');
+
+    // Carregar config inicial
+    (async () => {
+        const config = await window.api.getConfig();
+        inpPrecision.value = config.precision;
+        valPrecision.innerText = config.precision;
+        inpDelay.value = config.delay;
+        inpFps.value = config.fps;
+    })();
+
+    // Atualizar valor visual
+    inpPrecision.addEventListener('input', (e) => valPrecision.innerText = e.target.value);
+
+    // Salvar
+    btnSave.addEventListener('click', async () => {
+        const newConfig = {
+            precision: parseFloat(inpPrecision.value),
+            delay: parseFloat(inpDelay.value),
+            fps: parseInt(inpFps.value)
+        };
+
+        await window.api.saveConfig(newConfig);
+
+        // Feedback visual
+        msgSaved.classList.add('show');
+        setTimeout(() => {
+            msgSaved.classList.remove('show');
+            window.close(); // Fecha a janela apos salvar (opcional)
+        }, 800);
+    });
+</script>
+</body>
+</html>

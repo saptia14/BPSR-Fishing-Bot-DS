@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>Logs do Sistema - BPSR Fishing Bot</title>
+    <style>
+        body {
+            margin: 0; padding: 0;
+            background-color: #0f0f0f; color: #e0e0e0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            height: 100vh; display: flex; flex-direction: column;
+        }
+        .toolbar {
+            padding: 8px; background: #222; border-bottom: 1px solid #333;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .logs-container {
+            flex: 1; padding: 10px; overflow-y: auto; font-size: 0.9rem;
+        }
+        .log-entry { margin-bottom: 4px; word-wrap: break-word; border-bottom: 1px solid #1a1a1a; padding-bottom: 2px;}
+
+        /* Cores de Log */
+        .err { color: #ff6b6b; }
+        .act { color: #40c4ff; }
+        .sys { color: #888; font-style: italic; }
+        .suc { color: #69f0ae; }
+
+        button {
+            background: #333; border: 1px solid #444; color: white;
+            padding: 4px 8px; cursor: pointer; border-radius: 4px;
+        }
+        button:hover { background: #444; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-track { background: #0f0f0f; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 5px; }
+    </style>
+</head>
+<body>
+<div class="toolbar">
+    <span style="font-size: 0.8rem; color: #777;">TERMINAL DE SAÍDA</span>
+    <button id="btnClear">Limpar</button>
+</div>
+<div id="logs" class="logs-container"></div>
+
+<script>
+    const logsDiv = document.getElementById('logs');
+    const btnClear = document.getElementById('btnClear');
+
+    btnClear.addEventListener('click', () => logsDiv.innerHTML = '');
+
+    // Recebe mensagens do processo principal
+    window.api.onLog((message) => {
+        const clean = message.trim();
+        if (!clean || clean.startsWith('__JSON__')) return; // Ignora stats
+
+        const div = document.createElement('div');
+        div.className = 'log-entry';
+        div.innerText = clean;
+
+        // Cores
+        if (clean.includes('[ERRO]')) div.classList.add('err');
+        else if (clean.includes('🎣') || clean.includes('🖱️')) div.classList.add('act');
+        else if (clean.includes('✅')) div.classList.add('suc');
+        else div.classList.add('sys');
+
+        logsDiv.appendChild(div);
+        // Auto-scroll
+        logsDiv.scrollTop = logsDiv.scrollHeight;
+    });
+</script>
+</body>
+</html>

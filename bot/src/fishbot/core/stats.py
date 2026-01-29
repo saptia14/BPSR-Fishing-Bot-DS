@@ -1,3 +1,5 @@
+import json
+
 class StatsTracker:
     def __init__(self):
         self.stats = {
@@ -7,12 +9,23 @@ class StatsTracker:
             'rod_breaks': 0,
             'timeouts': 0
         }
+        # Flag para saber se houve mudanca desde o ultimo envio
+        self._changed = True
 
     def increment(self, stat_name, value=1):
         if stat_name in self.stats:
             self.stats[stat_name] += value
+            self._changed = True
+
+    def get_json(self):
+        """Retorna as estatisticas em formato JSON string se houver mudancas."""
+        if self._changed:
+            self._changed = False
+            return json.dumps({"type": "STATS_UPDATE", "data": self.stats})
+        return None
 
     def show(self):
+        # Mantemos o show original para debugging no terminal se necessario
         print("\n" + "=" * 50)
         print("📊 STATISTICS")
         print("=" * 50)

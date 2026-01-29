@@ -1,4 +1,5 @@
 import time
+import sys # Importante para o print(flush=True)
 
 from bot.src.fishbot.config import Config
 from bot.src.fishbot.core.game.controller import GameController
@@ -37,6 +38,9 @@ class FishingBot:
 
         self._register_states()
 
+        # Timer para enviar stats a cada X segundos para nao inundar a UI
+        self._last_stats_update = 0
+
     def _register_states(self):
         self.state_machine.add_state(StateType.STARTING, StartingState(self))
         self.state_machine.add_state(StateType.CHECKING_ROD, CheckingRodState(self))
@@ -51,7 +55,7 @@ class FishingBot:
         log(f"[INFO] ⚙️ Accuracy: {self.config.bot.detection.precision * 100:.0f}%")
         log(f"[INFO] ⚙️ Target FPS: {'MAX' if self.config.bot.target_fps == 0 else self.config.bot.target_fps}")
         log("[INFO] ⚠️ Warming up detection system...")
-        time.sleep(1)  # Allows enough time for the screen capture components to initialize
+        time.sleep(1)
         self.state_machine.set_state(StateType.STARTING)
 
     def update(self):
@@ -63,6 +67,15 @@ class FishingBot:
         screen = self.detector.capture_screen()
         self.state_machine.handle(screen)
 
+        # --- NOVO: Enviar estatisticas para a UI ---
+        if time.time() - self._last_stats_update > 0.5: # A cada 0.5s
+            stats_json = self.stats.get_json()
+            if stats_json:
+                # Imprime JSON puro para o stdout. A UI vai interceptar isto.
+                print(f"__JSON__{stats_json}", flush=True)
+            self._last_stats_update = time.time()
+        # -------------------------------------------
+
         if self.target_delay > 0:
             loop_time = time.time() - loop_start
             sleep_time = max(0, self.target_delay - loop_time)
@@ -70,12 +83,10 @@ class FishingBot:
                 time.sleep(sleep_time)
 
     def stop(self):
-        # Always show stats once
         if not getattr(self, "_stats_shown", False):
             self.stats.show()
             self._stats_shown = True
 
-        # Proceed with shutdown only once
         if not self._stopped:
             self.log("[BOT] 🛑 Shutting down the bot...")
             self._stopped = True

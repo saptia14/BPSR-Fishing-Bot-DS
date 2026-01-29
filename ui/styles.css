@@ -1,117 +1,143 @@
 :root {
-    --bg-color: #1a1a1a;
-    --console-bg: #0f0f0f;
-    --text-color: #e0e0e0;
-    --primary-color: #4CAF50;
-    --danger-color: #f44336;
-    --accent-color: #2196F3;
+    --bg-glass: rgba(15, 15, 15, 0.9);
+    --border-glass: rgba(255, 255, 255, 0.08);
+    --primary: #4CAF50;
+    --warning: #FFC107;
+    --danger: #FF5252;
+    --text: #ffffff;
 }
 
 body {
-    margin: 0;
-    padding: 0;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: var(--bg-color);
-    color: var(--text-color);
-    height: 100vh;
+    margin: 0; padding: 5px;
+    background: transparent;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: var(--text);
     overflow: hidden;
+    user-select: none;
 }
 
-.container {
+/* Base Glassmorphism */
+.glass {
+    background: var(--bg-glass);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border-glass);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    border-radius: 20px;
+}
+
+.app-container {
     display: flex;
     flex-direction: column;
-    height: 100%;
-    padding: 20px;
-    box-sizing: border-box;
-}
-
-header {
-    display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    border-bottom: 1px solid #333;
-    padding-bottom: 10px;
+    width: 100%;
 }
 
-h1 { margin: 0; font-size: 1.5rem; letter-spacing: 1px; }
-
-/* Status Badge */
-.status {
-    padding: 5px 12px;
-    border-radius: 12px;
-    font-weight: bold;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-}
-.status.stopped { background-color: #333; color: #888; }
-.status.running { background-color: rgba(76, 175, 80, 0.2); color: var(--primary-color); border: 1px solid var(--primary-color); }
-
-/* Buttons */
-.controls {
+/* BARRA DE CONTROLO */
+.control-bar {
     display: flex;
-    gap: 15px;
-    margin-bottom: 20px;
+    align-items: center;
+    padding: 0 15px;
+    gap: 12px;
+    height: 50px;
+    width: fit-content;
+    z-index: 10;
 }
 
-.btn {
-    flex: 1;
-    padding: 15px;
+.drag-handle {
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    padding-right: 5px;
+    -webkit-app-region: drag;
+}
+
+/* Indicador de Status */
+.status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #444;
+    box-shadow: 0 0 5px rgba(0,0,0,0.2);
+    transition: all 0.3s ease;
+}
+.status-dot.running { background: var(--primary); box-shadow: 0 0 8px var(--primary); }
+.status-dot.paused { background: var(--warning); box-shadow: 0 0 8px var(--warning); }
+.status-dot.stopped { background: #444; }
+
+/* Botões Principais */
+.actions { display: flex; gap: 8px; }
+
+/* Botões Secundários (CORREÇÃO: Alinhamento Horizontal) */
+.secondary-actions {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.btn-icon {
+    background: transparent;
     border: none;
-    border-radius: 8px;
+    color: #eee;
     cursor: pointer;
-    font-weight: bold;
-    font-size: 1rem;
+    border-radius: 50%;
+    width: 32px; height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    transition: transform 0.1s, opacity 0.2s;
-    text-transform: uppercase;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
+.btn-icon:hover { background: rgba(255,255,255,0.1); transform: scale(1.1); }
+.btn-icon:active { transform: scale(0.95); }
 
-.btn:active { transform: scale(0.98); }
-.btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn-icon svg { width: 20px; height: 20px; fill: currentColor; }
 
-.primary { background-color: var(--primary-color); color: white; }
-.primary:hover { background-color: #45a049; }
+.btn-icon.play { background: rgba(76, 175, 80, 0.2); color: var(--primary); }
+.btn-icon.play:hover { background: var(--primary); color: white; }
 
-.danger { background-color: var(--danger-color); color: white; }
-.danger:hover { background-color: #d32f2f; }
+.btn-icon.stop:hover { color: var(--danger); }
+.btn-icon.pause:hover { color: var(--warning); }
+.btn-icon.small { width: 28px; height: 28px; opacity: 0.6; }
+.btn-icon.small:hover { opacity: 1; }
 
-/* Console/Logs Area */
-.console-wrapper {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    border: 1px solid #333;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-}
+.hidden { display: none !important; }
 
-.console-header {
-    background-color: #252525;
-    padding: 8px 15px;
+.divider { width: 1px; height: 20px; background: rgba(255,255,255,0.1); margin: 0 2px; }
+
+.btn-text {
+    background: rgba(255,255,255,0.05);
+    border: none;
+    color: #ccc;
     font-size: 0.85rem;
-    color: #888;
-    border-bottom: 1px solid #333;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: 0.2s;
+    white-space: nowrap; /* Garante que o texto não quebre */
+}
+.btn-text:hover { background: rgba(255,255,255,0.15); color: white; }
+
+/* PAINEL DE STATS */
+.stats-panel {
+    display: flex;
+    gap: 25px;
+    padding: 15px 30px;
+    margin-top: -15px;
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
+    position: relative;
+    z-index: 1;
+}
+.stats-panel.visible {
+    opacity: 1;
+    transform: translateY(5px);
+    pointer-events: auto;
 }
 
-.console-output {
-    flex: 1;
-    background-color: var(--console-bg);
-    padding: 15px;
-    overflow-y: auto;
-    font-family: 'Consolas', 'Monaco', monospace;
-    font-size: 0.9rem;
-}
-
-/* Scrollbar styling */
-.console-output::-webkit-scrollbar { width: 10px; }
-.console-output::-webkit-scrollbar-track { background: var(--console-bg); }
-.console-output::-webkit-scrollbar-thumb { background: #444; border-radius: 5px; }
-.console-output::-webkit-scrollbar-thumb:hover { background: #555; }
-
-.log-entry { margin-bottom: 4px; word-wrap: break-word; }
-.log-entry.system { color: #888; font-style: italic; }
+.stat-item { display: flex; flex-direction: column; align-items: center; }
+.stat-item .label { font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;}
+.stat-item .value { font-size: 1.2rem; font-weight: bold; }
+.highlight { color: var(--primary); }
+.warning { color: var(--warning); }
+.danger { color: var(--danger); }
