@@ -13,6 +13,9 @@
 
 # BPSR Fishing Bot
 
+## This Project will not be updated by me anymore
+### The Reason is Simple, i'm no longer active on Blue Protocol. tks u all
+
 An automated and open-source fishing bot built in Python. It uses image detection to identify on-screen events and interact with a game's fishing minigame, automating the entire process.
 
 ---
