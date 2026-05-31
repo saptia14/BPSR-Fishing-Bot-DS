@@ -30,6 +30,46 @@ REFERENCE_WIDTH = 1920
 REFERENCE_HEIGHT = 1080
 
 
+def _setup_prototypes():
+    """Set restype/argtypes for the Win32 calls we use. Without this, ctypes
+    defaults to 32-bit int for return values and arguments, which can truncate
+    or sign-extend window handles on 64-bit Windows and break comparisons."""
+    if not IS_WINDOWS:
+        return
+    u = ctypes.windll.user32
+    HWND, DWORD, BOOL = wintypes.HWND, wintypes.DWORD, wintypes.BOOL
+    INT, UINT, LPWSTR = ctypes.c_int, ctypes.c_uint, wintypes.LPWSTR
+    PRECT = ctypes.POINTER(wintypes.RECT)
+    PPOINT = ctypes.POINTER(wintypes.POINT)
+    PDWORD = ctypes.POINTER(DWORD)
+    specs = [
+        ("GetForegroundWindow", HWND, []),
+        ("GetWindowThreadProcessId", DWORD, [HWND, PDWORD]),
+        ("IsWindowVisible", BOOL, [HWND]),
+        ("GetWindowRect", BOOL, [HWND, PRECT]),
+        ("GetClientRect", BOOL, [HWND, PRECT]),
+        ("ClientToScreen", BOOL, [HWND, PPOINT]),
+        ("GetWindowTextW", INT, [HWND, LPWSTR, INT]),
+        ("GetWindowTextLengthW", INT, [HWND]),
+        ("GetClassNameW", INT, [HWND, LPWSTR, INT]),
+        ("SetForegroundWindow", BOOL, [HWND]),
+        ("ShowWindow", BOOL, [HWND, INT]),
+        ("AttachThreadInput", BOOL, [DWORD, DWORD, BOOL]),
+        ("GetDpiForWindow", UINT, [HWND]),
+        ("GetDpiForSystem", UINT, []),
+    ]
+    for name, restype, argtypes in specs:
+        try:
+            fn = getattr(u, name)
+            fn.restype = restype
+            fn.argtypes = argtypes
+        except Exception:
+            pass
+
+
+_setup_prototypes()
+
+
 # ---------------------------------------------------------------------------
 # DPI awareness
 # ---------------------------------------------------------------------------
@@ -219,10 +259,37 @@ def get_foreground_hwnd():
     return ctypes.windll.user32.GetForegroundWindow()
 
 
+def get_foreground_pid():
+    """PID that owns the current foreground window, or None."""
+    if not IS_WINDOWS:
+        return None
+    hwnd = get_foreground_hwnd()
+    if not hwnd:
+        return None
+    try:
+        pid = wintypes.DWORD()
+        ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        return pid.value or None
+    except Exception:
+        return None
+
+
 def is_window_foreground(hwnd):
     if not IS_WINDOWS or not hwnd:
         return True  # can't tell -> don't block input
     return get_foreground_hwnd() == hwnd
+
+
+def is_pid_foreground(pid):
+    """True when the foreground window belongs to *pid*. More robust than HWND
+    equality: survives window recreation, child/overlay windows and handle
+    quirks (the game's main and active windows can differ)."""
+    if not IS_WINDOWS or not pid:
+        return True  # can't tell -> don't block input
+    fg = get_foreground_pid()
+    if fg is None:
+        return True
+    return fg == pid
 
 
 def focus_window(hwnd):

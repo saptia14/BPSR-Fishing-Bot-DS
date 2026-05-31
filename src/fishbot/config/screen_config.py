@@ -138,10 +138,16 @@ class ScreenConfig:
     # -- helpers used by states / detector ---------------------------------
 
     def is_game_foreground(self):
-        """True when the real game client is the active window (or unknown)."""
-        if not self.hwnd:
-            return True
-        return winutil.is_window_foreground(self.hwnd)
+        """True when the foreground window belongs to the game (or unknown).
+
+        Compares by process id, not exact HWND: the game can have several
+        top-level windows (main client, overlays) and may recreate its window,
+        so HWND equality gave false 'not focused' results."""
+        if self.pid:
+            return winutil.is_pid_foreground(self.pid)
+        if self.hwnd:
+            return winutil.is_window_foreground(self.hwnd)
+        return True
 
     def scale_point(self, x, y):
         """Scale a reference-resolution (1920x1080) point to live pixels,
