@@ -38,7 +38,7 @@ def main():
     hotkeys = Hotkeys(bot)
     bot.start()
 
-    log("[INFO] Press '7' to start the bot.")
+    log("[INFO] Press F9 to start the bot (console fallback — the GUI is gui.py).")
 
     try:
         while not bot.is_stopped():

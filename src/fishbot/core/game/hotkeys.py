@@ -10,10 +10,10 @@ class Hotkeys:
         self._register_hotkeys()
 
     def _register_hotkeys(self):
-        keyboard.add_hotkey('7', self._toggle_pause)
-        keyboard.add_hotkey('8', self._stop)
-        keyboard.add_hotkey('9', self._toggle_visualizer)
-        log("[INFO] ✅ Hotkeys registered: '7' (Pause/Resume), '8' (Exit), '9' (ROI Visualizer)")
+        keyboard.add_hotkey('f9', self._toggle_pause)
+        keyboard.add_hotkey('f10', self._stop)
+        keyboard.add_hotkey('f8', self._toggle_visualizer)
+        log("[INFO] ✅ Hotkeys registered: F9 (Start/Pause), F10 (Stop), F8 (ROI Visualizer)")
 
     def _toggle_pause(self):
         self.paused = not self.paused

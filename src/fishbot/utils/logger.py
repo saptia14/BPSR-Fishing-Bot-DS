@@ -12,10 +12,28 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 
+# Subscribers receive every formatted log line. The GUI registers one to mirror
+# logs into its on-screen console. Each subscriber is called as fn(line: str).
+_subscribers = []
+
+
+def subscribe(callback):
+    """Register a callback to receive every log line. Returns an unsubscribe fn."""
+    _subscribers.append(callback)
+    return lambda: _subscribers.remove(callback) if callback in _subscribers else None
+
+
 def log(message):
     timestamp = time.strftime("%H:%M:%S")
+    line = f"[{timestamp}] {message}"
     try:
-        print(f"[{timestamp}] {message}")
+        print(line)
     except Exception:
         # Last-resort fallback if a stream still can't encode the message.
-        print(f"[{timestamp}] {message.encode('ascii', 'replace').decode('ascii')}")
+        line = f"[{timestamp}] {message.encode('ascii', 'replace').decode('ascii')}"
+        print(line)
+    for cb in list(_subscribers):
+        try:
+            cb(line)
+        except Exception:
+            pass

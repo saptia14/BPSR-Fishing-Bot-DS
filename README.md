@@ -38,6 +38,7 @@ An automated and open-source fishing bot built in Python. It uses image detectio
 
 ## Features
 
+*   **Desktop GUI (Demon Soul):** A single PyQt6 app with a live status (LOADING → READY → FISHING), built-in Doctor diagnostics, session stats, an on-screen log, and global **F9 start / F10 stop** hotkeys.
 *   **Fully Automated Fishing:** Casts the line, detects a bite, and starts the minigame.
 *   **Smart Minigame Player:** Autonomously plays the fishing minigame, moving left and right as needed.
 *   **Automatic Rod Swapping:** Detects when the fishing rod breaks and replaces it with a new one, allowing for uninterrupted fishing sessions.
@@ -67,37 +68,40 @@ An automated and open-source fishing bot built in Python. It uses image detectio
     pip install -r requirements.txt
     ```
 
-### 3. How to Run
+### 3. How to Run (GUI)
 
-1.  Open the game and make sure it is visible on the screen.
-2.  Be at a fishing location. Either stand on an interactable fishing spot or already in the fishing UI.
-3.  Run the bot from the project's root folder:
+1.  Open the game and be at a fishing location (standing on a fishing spot or already in the fishing UI).
+2.  Launch the app:
     ```bash
-    python main.py
+    python gui.py
     ```
-4.  The bot will be ready. Press **7** key to start/pause, **8** to stop, and **9** to toggle the ROI visualizer. Keep the **game window focused** — the bot pauses its input whenever the game is not the active window (this protects the official launcher from accidental clicks).
+3.  The window opens on **LOADING**, runs the built-in **Doctor** diagnostics, then shows **READY** (or **READY — CHECK ISSUES** with a list of problems).
+4.  Press **F9** (or click **Start**) to begin: the status goes **LOADING → FISHING**. Press **F10** (or **Stop**) to end. **Re-run Doctor** re-checks at any time.
 
-> **Run as Administrator if the game is elevated.** If the game runs with admin rights but the bot does not, Windows silently ignores the bot's keystrokes/clicks. Use `run_as_admin.bat` (or right-click → *Run as administrator*). The bot prints a warning when it detects this mismatch.
+Keep the **game window focused** — input is automatically paused whenever the game isn't the active window (this protects the official launcher from accidental clicks that used to spawn a second game).
 
-### Diagnose problems with the Doctor
+> **Run as Administrator if the game is elevated.** If the game runs with admin rights but the bot does not, Windows silently ignores the bot's keystrokes/clicks. Use `run_as_admin.bat` (or right-click → *Run as administrator*). The Doctor panel flags this mismatch.
 
-If the bot doesn't seem to detect anything on a given machine, run the **Doctor** first:
+### The built-in Doctor
+
+The GUI runs the Doctor during its LOADING phase and shows the results in the **Doctor** panel: display scaling, admin/elevation, the detected game window vs. the launcher, the capture region & scale, and how many detection templates currently match — plus an annotated `doctor_report.png`. A standalone console version is also available:
 
 ```bash
 python doctor.py
 ```
 
-It reports your display scaling, admin/elevation state, the detected game window vs. the launcher, the exact capture region, and a live confidence score for every detection template — and saves an annotated `doctor_report.png`. This turns "it doesn't work" into a precise diagnosis.
+### Console fallback
 
-### Standalone executables (no Python needed)
+A headless console mode remains for debugging: `python main.py` (F9 start/pause, F10 stop, F8 ROI visualizer).
 
-Build self-contained `.exe` files for sharing with friends:
+### Standalone executable (no Python needed)
 
 ```bash
-python build.py          # builds dist\Doctor.exe and dist\BPSR-Fishing.exe
+python build.py          # builds dist\BPSR-Fishing.exe (the GUI, Doctor built in)
+python build.py all      # also builds Doctor.exe + the console bot
 ```
 
-`Doctor.exe` is the diagnostic tool; `BPSR-Fishing.exe` is the bot. Detection templates are bundled inside each executable.
+Detection templates are bundled inside the executable.
 
 ---
 

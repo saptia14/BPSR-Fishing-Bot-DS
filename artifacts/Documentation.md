@@ -191,8 +191,9 @@ Input is simulated by **`GameController`** (`core/game/controller.py`): `press_k
 ### Root
 | File | Purpose |
 |---|---|
-| `main.py` | Entry point. Enables DPI awareness, builds `FishingBot` + `Hotkeys`, runs the elevation advisory and the paused-aware update loop with a top-level safety net. |
-| `doctor.py` | **DEBUG DOCTOR** — self-diagnosis tool (DPI, elevation, window/launcher, capture region, per-template confidence, annotated screenshot). See §14. |
+| `gui.py` | **Primary entry point** — launches the PyQt6 Demon Soul GUI (Doctor built in, F9/F10 hotkeys). See §15. |
+| `main.py` | Console fallback. Enables DPI awareness, builds `FishingBot` + `Hotkeys`, runs the elevation advisory and the paused-aware update loop with a top-level safety net. |
+| `doctor.py` | Console DEBUG DOCTOR — thin CLI over `src/fishbot/diagnostics.py` (DPI, elevation, window/launcher, capture region, per-template confidence, annotated screenshot). See §14. |
 | `build.py` / `build.bat` | PyInstaller build of `Doctor.exe` and `BPSR-Fishing.exe` (templates bundled). |
 | `run_as_admin.bat` | Relaunches the bot elevated (needed when the game runs as Administrator). |
 | `requirements.txt` | Runtime dependencies (opencv-python, numpy, mss, PyAutoGUI, pydirectinput, keyboard, PyQt6). |
@@ -260,7 +261,13 @@ Input is simulated by **`GameController`** (`core/game/controller.py`): `press_k
 ### `src/fishbot/ui/`
 | File | Purpose |
 |---|---|
-| `__init__.py` | Placeholder reserved for a future configuration GUI. |
+| `__init__.py` | Exposes `run()`; the GUI package. |
+| `app.py` | **(DS)** PyQt6 GUI: status banner, Start/Stop, Doctor panel, stats, live log; runs diagnostics and the bot in worker threads (`DiagnosticsWorker`, `BotThread`); global F9/F10 hotkeys. |
+
+### `src/fishbot/`
+| File | Purpose |
+|---|---|
+| `diagnostics.py` | **(DS)** Shared Doctor logic → structured `DiagReport`, used by both the console Doctor and the GUI. |
 
 ### `src/fishbot/assets/templates/` — detection reference images (PNG)
 | Template | Used to detect |
@@ -355,3 +362,26 @@ A one-shot diagnostic that turns "it doesn't work" into a precise cause. It repo
 |---|---|
 | `BPSR_WINDOW_TITLE` | Regex to force-match the game window by title. |
 | `BPSR_WINDOW_CLASS` | Regex to force-match the game window by class. |
+
+---
+
+## 15. The GUI (Demon Soul edition)
+
+The primary entry point is now a **PyQt6 desktop app** (`gui.py` → `src/fishbot/ui/app.py`). It integrates the Doctor and the bot in one window — there is no separate Doctor.exe by default. The console `main.py` remains as a fallback.
+
+### State flow
+```
+window opens → LOADING ──(DiagnosticsWorker)──▶ READY        (or ATTENTION if issues)
+   F9 / Start ─▶ LOADING ──(BotThread warm-up)──▶ FISHING
+   F10 / Stop ─▶ STOPPED ──▶ (start again / Re-run Doctor)
+```
+The status banner is colour-coded: LOADING (amber), READY (blue), ATTENTION (orange), FISHING (green), STOPPED (grey), ERROR (red).
+
+### Threading model
+- **`DiagnosticsWorker(QThread)`** runs `diagnostics.run_diagnostics()` off the UI thread and emits a `DiagReport`. The window populates the **Doctor** panel (window, region, scale, admin, elevation, focus, templates matched, issues) and moves to READY/ATTENTION.
+- **`BotThread(QThread)`** constructs `FishingBot` (the LOADING/warm-up), then runs `bot.update()` in a loop, emitting status and live stats. `request_stop()` stops it cleanly; `mss` is created inside this thread, as required.
+- **Logs** are mirrored into the on-screen console via `logger.subscribe(...)`, bridged to the GUI thread with a queued `pyqtSignal` so it's thread-safe.
+- **Hotkeys** F9/F10 are registered globally with the `keyboard` library; their callbacks emit Qt signals (`hotkey_start`/`hotkey_stop`) so they cross safely into the UI thread. F9 = start/resume, F10 = stop.
+
+### Why it's a single app
+Per the brief, the Doctor is **built in**: the GUI runs the exact same `diagnostics.run_diagnostics()` during LOADING that the console Doctor uses, so a friend launches one `BPSR-Fishing.exe`, sees the diagnosis, and clicks Start. `build.py` defaults to building just this GUI exe (windowed, PyQt6 bundled); `build.py all` additionally produces the console `Doctor.exe` and `BPSR-Fishing-console.exe`.
