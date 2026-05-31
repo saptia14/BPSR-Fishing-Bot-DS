@@ -19,6 +19,7 @@ from src.fishbot.utils import winutil
 class DiagReport:
     ok: bool = False
     problems: list = field(default_factory=list)
+    notes: list = field(default_factory=list)
 
     # system
     python: str = ""
@@ -63,8 +64,10 @@ def _output_dir():
 def run_diagnostics(save_annotated=False, screen_config=None):
     """Run all checks. Pass an existing ScreenConfig to reuse a detected window
     (e.g. the one the bot is already using)."""
+    from src.fishbot import ENGLISH_REQUIRED_NOTE
     winutil.enable_dpi_awareness()
     rep = DiagReport()
+    rep.notes.append(ENGLISH_REQUIRED_NOTE)
 
     # --- system ---
     rep.python = f"{platform.python_version()} ({platform.architecture()[0]})"

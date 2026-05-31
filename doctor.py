@@ -28,7 +28,8 @@ def _hr(title=""):
 
 
 def main():
-    print("BPSR Fishing Bot — DEBUG DOCTOR")
+    from src.fishbot import __version__
+    print(f"BPSR Fishing Bot — DEBUG DOCTOR  (v{__version__})")
     rep = run_diagnostics(save_annotated=True)
 
     _hr("SYSTEM")
@@ -82,6 +83,10 @@ def main():
             print(f"     - {p}")
     else:
         print("  ✅ No blocking problems detected.")
+    if rep.notes:
+        print("\n  ⚠️ REQUIREMENTS:")
+        for n in rep.notes:
+            print(f"     - {n}")
     print()
 
     if getattr(sys, "frozen", False):

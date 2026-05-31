@@ -120,8 +120,9 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("BPSR Fishing Bot — Demon Soul")
-        self.setMinimumSize(640, 620)
+        from src.fishbot import __version__
+        self.setWindowTitle(f"BPSR Fishing Bot — Demon Soul  v{__version__}")
+        self.setMinimumSize(640, 660)
         self.bot_thread = None
         self.last_report = None
 
@@ -160,6 +161,16 @@ class MainWindow(QMainWindow):
         self.status_label.setObjectName("statusBanner")
         self.status_label.setMinimumHeight(70)
         root.addWidget(self.status_label)
+
+        # Persistent requirement warning
+        from src.fishbot import ENGLISH_REQUIRED_NOTE
+        self.lang_warning = QLabel("⚠️  " + ENGLISH_REQUIRED_NOTE)
+        self.lang_warning.setWordWrap(True)
+        self.lang_warning.setObjectName("langWarning")
+        self.lang_warning.setStyleSheet(
+            "#langWarning { background:#3a2e12; color:#f0c674; border:1px solid #6b5418;"
+            " border-radius:6px; padding:6px 8px; font-weight:600; }")
+        root.addWidget(self.lang_warning)
 
         # Controls
         controls = QHBoxLayout()
