@@ -1,3 +1,4 @@
+import os
 import time
 
 from ..bot_state import BotState
@@ -14,6 +15,26 @@ class CheckingRodState(BotState):
     """
 
     GOOD_ROD_TEMPLATES = ("flex_rod", "sturdy_rod", "reg_rod")
+
+    # The click on the new rod lands a touch above-left of the selectable icon,
+    # so nudge it down-right (reference px @ 1920x1080, scaled to live size).
+    # Tune without rebuilding via env var:  BPSR_ROD_OFFSET="dx,dy"
+    DEFAULT_SELECT_OFFSET = (20, 25)
+
+    def __init__(self, bot):
+        super().__init__(bot)
+        self.select_offset = self._read_offset()
+
+    def _read_offset(self):
+        raw = os.environ.get("BPSR_ROD_OFFSET")
+        if raw:
+            try:
+                dx, dy = (int(v.strip()) for v in raw.split(","))
+                return (dx, dy)
+            except Exception:
+                self.bot.log(f"[CHECKING_ROD] ⚠️ Bad BPSR_ROD_OFFSET '{raw}', "
+                             "expected 'dx,dy'. Using default.")
+        return self.DEFAULT_SELECT_OFFSET
 
     def _rod_present(self, screen):
         for name in self.GOOD_ROD_TEMPLATES:
@@ -55,6 +76,12 @@ class CheckingRodState(BotState):
 
         return StateType.CASTING_BAIT
 
+    def _apply_offset(self, x, y):
+        """Nudge the click target down-right onto the selectable rod icon."""
+        dx, dy = self.select_offset
+        return (x + int(dx * self.window.scale_x),
+                y + int(dy * self.window.scale_y))
+
     def _replace_rod(self):
         # Open the bag/equip menu.
         self.controller.press_key('m')
@@ -71,6 +98,11 @@ class CheckingRodState(BotState):
             x, y = self.window.scale_point(1650, 580)
             self.bot.log("[CHECKING_ROD] ↩️ New rod not detected; using scaled "
                          f"slot ({x}, {y})")
+
+        # Land squarely on the rod icon (down-right nudge; tune via BPSR_ROD_OFFSET).
+        x, y = self._apply_offset(x, y)
+        self.bot.log(f"[CHECKING_ROD] 🖱️ Selecting rod at ({x}, {y}) "
+                     f"[offset {self.select_offset}]")
 
         self.controller.move_to(x, y)
         time.sleep(0.5)
