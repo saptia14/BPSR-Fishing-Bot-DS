@@ -35,6 +35,14 @@ class StateMachine:
         self.current_state = self.states[self.current_state_name]
         self.state_start_time = time.time()
 
+        # Let a state reset per-entry data (timers, held directions, ...).
+        on_enter = getattr(self.current_state, "on_enter", None)
+        if callable(on_enter):
+            try:
+                on_enter()
+            except Exception as e:
+                log(f"[ERROR] on_enter for {new_state_name.name} failed: {e}")
+
     def _check_state_timeout(self):
         timeout_limit = self.config.state_timeouts.get(self.current_state_name.name)
         if not timeout_limit:
