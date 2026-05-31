@@ -5,7 +5,7 @@
 
 <p align="left">
     <a href="#"><img alt="Build Status" src="https://github.com/your-username/BPSR-Fishing-Bot/actions/workflows/main.yml/badge.svg"></a>
-    <a href="#"><img alt="Project Version" src="https://img.shields.io/badge/version-1.1.0--ds-blue"></a>
+    <a href="#"><img alt="Project Version" src="https://img.shields.io/badge/version-1.1.1--ds-blue"></a>
     <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-brightgreen"></a>
     <a href="https://www.python.org"><img alt="Python" src="https://img.shields.io/badge/Python-3.8+-3776AB?logo=python"></a>
     <a href="https://opencv.org"><img alt="OpenCV" src="https://img.shields.io/badge/OpenCV-4.x-5C3EE8?logo=opencv"></a>

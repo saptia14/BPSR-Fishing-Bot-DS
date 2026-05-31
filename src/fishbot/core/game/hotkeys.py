@@ -43,7 +43,3 @@ class Hotkeys:
             # Runs the visualizer in a separate process so it doesn’t block the main UI
             self.visualizer_process = multiprocessing.Process(target=show_roi_visualizer, daemon=True)
             self.visualizer_process.start()
-
-    def wait_for_exit(self):
-        """Keeps the script running until the exit hotkey is pressed."""
-        keyboard.wait('8')

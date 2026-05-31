@@ -149,10 +149,10 @@ This is the computer-vision heart of the bot.
 
 Cross-cutting safety checks that **run every frame before the active state**, inside `StateMachine.handle()`. Each extends the abstract `BaseInterceptor`. If an interceptor handles the frame, normal state handling is skipped for that tick. (In the original upstream these were never invoked and were internally broken — the DS edition wires and fixes them; see §14.)
 
-- **`FocusGuardInterceptor` (DS edition)** — If the real game client isn't the foreground window, it **releases all controls and pauses input**. This prevents the bot's clicks from hitting other apps — notably the official launcher's *Play* button, which used to spawn a second game instance.
-- **`LevelCheckInterceptor`** — If the "level check" UI is detected mid-cycle, release controls, clear any in-progress minigame direction, and force-reset to `CHECKING_ROD` (now using the correct `state_machine` API and `StateType` keys).
-- **`RodCheckInterceptor`** — Reusable guard rail that releases controls when a broken-rod indicator appears.
+- **`FocusGuardInterceptor` (DS edition)** — If the game isn't the foreground **process**, it **releases all controls and pauses input**. This prevents the bot's clicks from hitting other apps — notably the official launcher's *Play* button, which used to spawn a second game instance — and is the only guard rail run unconditionally.
 - **State timeouts** act as the machine-level guard rail (see §4).
+
+> The upstream `LevelCheckInterceptor` / `RodCheckInterceptor` were removed in the DS edition: the level-check guard looped forever on the normal fishing UI, and the rod-check one was never used.
 
 ---
 
@@ -247,9 +247,7 @@ Input is simulated by **`GameController`** (`core/game/controller.py`): `press_k
 | File | Purpose |
 |---|---|
 | `base_interceptor.py` | `BaseInterceptor` abstract guard-rail base. |
-| `focus_guard_interceptor.py` | **(DS)** Pauses input when the game isn't the foreground window (fixes the launcher "second game" bug). |
-| `level_check_interceptor.py` | Detects level-check UI → reset to `CHECKING_ROD` (fixed + actually wired). |
-| `rod_check_interceptor.py` | Detects broken-rod indicator → release controls. |
+| `focus_guard_interceptor.py` | **(DS)** Pauses input when the game isn't the foreground **process** (fixes the launcher "second game" bug and false "not focused"). |
 
 ### `src/fishbot/utils/`
 | File | Purpose |

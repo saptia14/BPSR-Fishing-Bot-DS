@@ -3,7 +3,6 @@ import time
 from src.fishbot.config import Config
 from src.fishbot.core.game.controller import GameController
 from src.fishbot.core.game.detector import Detector
-from src.fishbot.core.interceptors.level_check_interceptor import LevelCheckInterceptor
 from src.fishbot.core.interceptors.focus_guard_interceptor import FocusGuardInterceptor
 from src.fishbot.core.state.impl.casting_bait_state import CastingBaitState
 from src.fishbot.core.state.impl.checking_rod_state import CheckingRodState
@@ -27,14 +26,10 @@ class FishingBot:
         self.controller = GameController(self.config)
         self.state_machine = StateMachine(self)
 
-        # Kept for backward-compatibility (states reference it) but NOT run as a
-        # guard rail: the `level_check` template marks the *normal* fishing UI
-        # (StartingState uses it as an "already fishing" signal), so resyncing on
-        # it would lock the bot in an infinite STARTING<->CHECKING_ROD loop.
-        self.level_check_interceptor = LevelCheckInterceptor(self)
-
-        # Guard rails, run every frame before the active state. Only the focus
-        # guard is safe to run unconditionally.
+        # Guard rails, run every frame before the active state. The focus guard
+        # pauses input whenever the game isn't the foreground process.
+        # (Note: we deliberately do NOT guard on the `level_check` template — it
+        # marks the *normal* fishing UI, so resyncing on it would loop forever.)
         self.interceptors = [
             FocusGuardInterceptor(self),
         ]

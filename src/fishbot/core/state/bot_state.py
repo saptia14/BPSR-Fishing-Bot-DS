@@ -7,7 +7,6 @@ class BotState(BotComponent, ABC):
 
     def __init__(self, bot):
         super().__init__(bot)
-        self.level_check_interceptor = bot.level_check_interceptor
         # Share the single detected ScreenConfig (don't re-detect per state).
         self.window = bot.config.bot.screen
 
