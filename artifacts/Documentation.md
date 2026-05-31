@@ -38,13 +38,14 @@ The bot can run for hours unattended: it casts the line, waits for a bite, plays
 | Screen capture | **`mss` 10.x** | Very fast, low-latency monitor/region grabbing into NumPy arrays. |
 | Computer vision | **OpenCV (`opencv-python` 4.12)** | `cv.matchTemplate` (TM_CCOEFF_NORMED) template matching with optional alpha mask; color conversion; grayscale matching. |
 | Numerics | **NumPy** | Wraps raw screenshots as arrays for OpenCV. |
-| Input simulation | **PyAutoGUI 0.9.54** | Mouse move/click/hold and keyboard press/hold/release, with `FAILSAFE` enabled. |
+| Keyboard input | **`pydirectinput`** (scancode) with **PyAutoGUI** fallback | Scancode `SendInput` that DirectX/Unity games honor; PyAutoGUI used for absolute mouse moves/clicks. |
 | Global hotkeys | **`keyboard` 0.13.5** | System-wide `7`/`8`/`9` hotkeys to pause, stop, and toggle the ROI overlay. |
-| Window discovery | **`pywinctl`** | Locates the "Blue Protocol: Star Resonance" window to auto-derive capture offsets (supports windowed mode). |
-| Debug overlay GUI | **PyQt6 6.10 (+ `pyqt6-sip`)** | A transparent, click-through full-screen overlay (`roi_visualizer.py`) that draws every ROI rectangle for tuning. |
+| Window discovery | **`ctypes` Win32 (`winutil.py`)** | Enumerates top-level windows, scores the real game client vs. the launcher, reads the exact **client rect**, DPI scale, and process elevation — no third-party dependency. |
+| Packaging | **PyInstaller** | Builds standalone `Doctor.exe` and `BPSR-Fishing.exe` with templates bundled. |
+| Debug overlay GUI | **PyQt6 6.10 (+ `pyqt6-sip`)** | Optional, lazily-imported transparent overlay (`roi_visualizer.py`) drawing every ROI rectangle for tuning. |
 | Concurrency | **`multiprocessing`** (stdlib) | Runs the ROI visualizer in a separate process so it doesn't block the bot loop. |
 
-> The game must run at **1920×1080**. Default ROIs are calibrated for FullHD; other resolutions require re-tuning the ROI table (or setting ROIs to `None` for a slower full-frame search).
+> **Resolution-independent (DS edition).** ROIs and templates are calibrated against a 1920×1080 reference and **auto-scaled** to the live window size, so any resolution, windowed/full-screen, multi-monitor and non-100% display scaling all work without re-tuning. See §14.
 
 ---
 
@@ -137,17 +138,20 @@ This is the computer-vision heart of the bot.
 2. **Screen capture** — `mss` grabs the configured `monitor` region (BGRA) → NumPy array → converted to BGR. The `mss` instance is lazily created inside the bot thread.
 3. **ROI restriction** — For a given template, look up its ROI `(x, y, w, h)` in `detection_config.rois` (ROIs may be a string alias pointing at another ROI). The search is clamped to screen bounds and limited to that small rectangle — drastically faster and less false-positive-prone than scanning the full frame.
 4. **Matching** — Both the ROI crop and the template are grayscaled, then `cv.matchTemplate(..., cv.TM_CCOEFF_NORMED, mask=mask)`; `cv.minMaxLoc` extracts the best **confidence** (0–1) and its location. A match requires `confidence ≥ precision` (default `0.65`).
-5. **Concentric-square fallback search** — If the ROI match fails and a `radius > 0` was requested, `_generate_concentric_square_pixels` yields pixel coordinates on the perimeters of ever-larger squares around the ROI origin, re-running the match at each shifted offset. This tolerates small UI drift without paying for a full-frame scan.
-6. **Center calculation** — On a hit, `_calculate_center` returns the absolute on-screen `(x, y)` center of the matched template (adding ROI offset + monitor offset), ready to feed into mouse moves/clicks.
+5. **Padded-ROI fallback (DS edition)** — If the ROI match fails and `radius > 0`, the detector retries **once** on a slightly padded ROI. This replaced the old concentric-square pixel sweep, which re-ran `matchTemplate` up to O(radius²) times per template each frame for results `matchTemplate` already covers.
+6. **Resolution scaling (DS edition)** — Templates are resized once at load by the live scale factor, and ROIs are scaled per frame, so the same calibrated PNGs work at any resolution.
+7. **Pre-computed grayscale (DS edition)** — Each template's grayscale (and alpha mask) is computed **once at load**, not per match; masked `TM_CCOEFF_NORMED` is used only when an alpha mask exists.
+8. **Center calculation** — On a hit, `_calculate_center` returns the absolute on-screen `(x, y)` center of the matched template (adding ROI offset + monitor offset), ready to feed into mouse moves/clicks.
 
 ---
 
 ## 7. Guard rails / interceptors (`core/interceptors/`)
 
-Cross-cutting safety checks that can fire regardless of state, all extending the abstract `BaseInterceptor` (which itself uses the shared `BotComponent` to get `bot`, `config`, `detector`, `controller`).
+Cross-cutting safety checks that **run every frame before the active state**, inside `StateMachine.handle()`. Each extends the abstract `BaseInterceptor`. If an interceptor handles the frame, normal state handling is skipped for that tick. (In the original upstream these were never invoked and were internally broken — the DS edition wires and fixes them; see §14.)
 
-- **`LevelCheckInterceptor`** — If the "level check" UI is detected, release controls, clear any in-progress minigame direction, and reset to `CHECKING_ROD`. (Wired into `FishingBot` and available to every state via `BotState`.)
-- **`RodCheckInterceptor`** — If a broken-rod indicator is detected, release controls and signal a rod problem. (Provided as a reusable guard rail.)
+- **`FocusGuardInterceptor` (DS edition)** — If the real game client isn't the foreground window, it **releases all controls and pauses input**. This prevents the bot's clicks from hitting other apps — notably the official launcher's *Play* button, which used to spawn a second game instance.
+- **`LevelCheckInterceptor`** — If the "level check" UI is detected mid-cycle, release controls, clear any in-progress minigame direction, and force-reset to `CHECKING_ROD` (now using the correct `state_machine` API and `StateType` keys).
+- **`RodCheckInterceptor`** — Reusable guard rail that releases controls when a broken-rod indicator appears.
 - **State timeouts** act as the machine-level guard rail (see §4).
 
 ---
@@ -156,7 +160,7 @@ Cross-cutting safety checks that can fire regardless of state, all extending the
 
 All tunables live here so behavior can change without touching logic.
 
-- **`screen_config.py` → `ScreenConfig`** — Capture geometry. Defaults to `1920×1080` at `(0,0)`; uses **`pywinctl`** to find the "Blue Protocol" window and auto-adjust offsets for **windowed mode** (accounting for the title bar / borders).
+- **`screen_config.py` → `ScreenConfig`** — Capture geometry. Scores all top-level windows to find the **real game client** (Unity `UnityWndClass` / title match) while **excluding the launcher** (Electron/CEF), reads the exact **client rect** (no title-bar guesswork), and computes the live-vs-reference **scale factors**. Honors `BPSR_WINDOW_TITLE` / `BPSR_WINDOW_CLASS` overrides. Exposes `is_game_foreground()`, `scale_point()`, `scale_rect()`.
 - **`detection_config.py` → `DetectionConfig`** — The detection brain: `precision = 0.65`, the **template name → PNG file** map (15 templates), and the **ROI table** (FullHD-calibrated rectangles per template). Commented-out blocks document a slower "any resolution" mode (all ROIs `None`).
 - **`bot_config.py` → `BotConfig`** — Behavior knobs: per-state `state_timeouts` (10–30 s), `quick_finish_enabled`, `debug_mode`, `target_fps` (0 = unlimited), and action delays (`default_delay`, `finish_wait_delay`, `casting_delay`).
 - **`paths.py`** — Resolves `PACKAGE_ROOT`, `ASSETS_PATH`, `TEMPLATES_PATH` from the file location.
@@ -187,11 +191,15 @@ Input is simulated by **`GameController`** (`core/game/controller.py`): `press_k
 ### Root
 | File | Purpose |
 |---|---|
-| `main.py` | Entry point. Builds `FishingBot` + `Hotkeys`, prints the start banner, runs the paused-aware update loop until stopped. |
-| `requirements.txt` | Python dependencies (PyQt6, pywinctl, opencv-python, mss, PyAutoGUI, keyboard). |
+| `main.py` | Entry point. Enables DPI awareness, builds `FishingBot` + `Hotkeys`, runs the elevation advisory and the paused-aware update loop with a top-level safety net. |
+| `doctor.py` | **DEBUG DOCTOR** — self-diagnosis tool (DPI, elevation, window/launcher, capture region, per-template confidence, annotated screenshot). See §14. |
+| `build.py` / `build.bat` | PyInstaller build of `Doctor.exe` and `BPSR-Fishing.exe` (templates bundled). |
+| `run_as_admin.bat` | Relaunches the bot elevated (needed when the game runs as Administrator). |
+| `requirements.txt` | Runtime dependencies (opencv-python, numpy, mss, PyAutoGUI, pydirectinput, keyboard, PyQt6). |
+| `requirements-dev.txt` | Runtime deps + PyInstaller for building executables. |
 | `README.md` / `README.pt-br.md` | User-facing guides (English / Brazilian Portuguese): features, install, run, troubleshooting, config, architecture. |
 | `LICENSE` | GPL-3.0 license text. |
-| `.gitignore` | Excludes Python/virtualenv/IDE artifacts from version control. |
+| `.gitignore` | Excludes Python/virtualenv/IDE/build artifacts from version control. |
 
 ### `src/fishbot/` (package)
 | File | Purpose |
@@ -238,14 +246,16 @@ Input is simulated by **`GameController`** (`core/game/controller.py`): `press_k
 | File | Purpose |
 |---|---|
 | `base_interceptor.py` | `BaseInterceptor` abstract guard-rail base. |
-| `level_check_interceptor.py` | Detects level-check UI → reset to `CHECKING_ROD`. |
+| `focus_guard_interceptor.py` | **(DS)** Pauses input when the game isn't the foreground window (fixes the launcher "second game" bug). |
+| `level_check_interceptor.py` | Detects level-check UI → reset to `CHECKING_ROD` (fixed + actually wired). |
 | `rod_check_interceptor.py` | Detects broken-rod indicator → release controls. |
 
 ### `src/fishbot/utils/`
 | File | Purpose |
 |---|---|
-| `logger.py` | `log()`: timestamped console logging used throughout. |
-| `roi_visualizer.py` | PyQt6 transparent, click-through full-screen overlay drawing every ROI rectangle + label for calibration. |
+| `logger.py` | `log()`: timestamped console logging; **reconfigures stdout/stderr to UTF-8** so emoji output never crashes a cp1252 console. |
+| `winutil.py` | **(DS)** Win32/ctypes helpers: DPI awareness, admin/elevation checks, window enumeration, client-rect, foreground detection. |
+| `roi_visualizer.py` | Optional PyQt6 transparent, click-through overlay drawing every ROI rectangle + label for calibration (lazily imported). |
 
 ### `src/fishbot/ui/`
 | File | Purpose |
@@ -288,4 +298,60 @@ python main.py
 
 ## 13. About this fork (`-DS`)
 
-This `BPSR-Fishing-Bot-DS` fork (owner `saptia14`) preserves the upstream architecture verbatim as a starting point. The upstream project is no longer maintained by its original author; this fork exists to continue / customize it (the "Demon Soul" edition). Suggested next steps mirror the upstream roadmap: a configuration **GUI** (the reserved `ui/` package), broader **resolution support**, and improved **resilience** to unexpected in-game events.
+This `BPSR-Fishing-Bot-DS` fork (owner `saptia14`) continues / customizes the unmaintained upstream (the "Demon Soul" edition). §14 documents the work done on top of the original architecture.
+
+---
+
+## 14. DS Edition — cross-machine robustness, resilience & efficiency
+
+The DS edition targets one overarching goal: **run seamlessly on any Windows machine**, plus stronger resilience and lower CPU. Work was done in four phases.
+
+### Bugs fixed
+
+1. **"Detects nothing on a friend's PC."** Root causes were (a) the process was **not DPI-aware**, so on non-100% display scaling the window rect, captured pixels and click coordinates disagreed; (b) hard-coded 1920×1080 ROIs broke on other resolutions; (c) the window search matched a brittle `"Blue Protocol"` substring and **silently fell back** to wrong full-screen defaults. All three are addressed (DPI awareness, resolution scaling, robust client detection).
+2. **Elevation mismatch.** If the game runs as Administrator but the bot doesn't, Windows (UIPI) silently drops the bot's input. The bot now **detects and warns** about this, and ships `run_as_admin.bat`.
+3. **A second game instance launches via the launcher.** With no focus guard, the bot's center-click landed on the official launcher's *Play* button. Fixed by (a) attaching only to the real game client and **excluding launcher windows**, and (b) the **focus guard** that pauses input whenever the game isn't foreground.
+4. **Dead/broken guard rails.** Upstream created `LevelCheckInterceptor` but never called it, and it referenced non-existent APIs (`bot.set_state`, string state keys, `_current_arrow`). Now interceptors **run every frame** and the level-check guard is corrected.
+5. **Emoji crash on legacy consoles.** Emoji in logs raised `UnicodeEncodeError` on cp1252 consoles. Output is reconfigured to UTF-8 with replacement.
+
+### Phase 1 — runs anywhere
+- **DPI awareness** (`winutil.enable_dpi_awareness`, Per-Monitor-v2 with fallbacks), enabled before any capture in `main.py` / `doctor.py`.
+- **Robust window acquisition** (`ScreenConfig`): scores candidates by class (`UnityWndClass`) and title, **excludes** launcher/Electron windows, reads the exact **client rect** (no `+32/+8` title-bar guesswork), and supports `BPSR_WINDOW_TITLE` / `BPSR_WINDOW_CLASS` overrides.
+- **Elevation advisory** + `run_as_admin.bat`.
+- **The Doctor** (`doctor.py`) — see below.
+
+### Phase 2 — resilience
+- Interceptors **wired into `StateMachine.handle()`** and run before the active state; per-interceptor exceptions are isolated.
+- **`FocusGuardInterceptor`** — releases controls and pauses while the game isn't focused.
+- **Fixed `LevelCheckInterceptor`** — uses `state_machine.set_state`, `StateType` keys, `_current_direction`.
+- **Top-level safety net** — `FishingBot.update()` and the `main()` loop catch exceptions, always releasing controls so keys are never left held.
+- **Detection-driven clicks** — rod replacement and reconnect now click the **detected template center** (with a resolution-scaled fallback) instead of hard-coded `(1650,580)`/`(1100,795)`.
+
+### Phase 3 — portability across resolutions
+- **Resolution-independent ROIs/templates** — ROIs are scaled per frame (`ScreenConfig.scale_rect`) and templates resized once at load to the live scale, so the 1920×1080 calibration works everywhere.
+- **Scancode input** — `GameController` uses `pydirectinput` (hardware scancodes that DirectX/Unity games honor) with a PyAutoGUI fallback, and tracks held keys/buttons for a complete `release_all_controls`.
+
+### Phase 4 — efficiency
+- **Pre-computed grayscale templates** (was re-converting every match).
+- **Padded-ROI fallback** replaces the O(radius²) concentric-square pixel sweep with a single retry.
+- **Crop-then-grayscale** small ROIs instead of graying full frames; **masked matching only when a mask exists**; capture is limited to the game client region.
+
+### The DEBUG DOCTOR (`doctor.py` → `Doctor.exe`)
+
+A one-shot diagnostic that turns "it doesn't work" into a precise cause. It reports:
+- Python/OS, **display scale**, **admin** state, and the active **input backend**.
+- All **game-like windows** (title, class, pid, **elevation**, size) with the chosen one marked, and which window was excluded as the launcher.
+- The exact **capture region** and **scale factor**, plus an **elevation-mismatch** and **focus** warning.
+- A **live confidence** score for every detection template against the current screen.
+- An annotated **`doctor_report.png`** with each ROI drawn green (match) / red (no match).
+- A **summary** of likely problems.
+
+### Building executables
+
+`python build.py` (or `build.bat`) produces `dist/Doctor.exe` and `dist/BPSR-Fishing.exe` via PyInstaller (one-file, templates bundled, optional PyQt6 visualizer excluded). `paths.py` resolves bundled assets via `sys._MEIPASS` when frozen.
+
+### New env-var overrides
+| Variable | Effect |
+|---|---|
+| `BPSR_WINDOW_TITLE` | Regex to force-match the game window by title. |
+| `BPSR_WINDOW_CLASS` | Regex to force-match the game window by class. |

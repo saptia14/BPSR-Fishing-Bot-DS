@@ -52,7 +52,7 @@ An automated and open-source fishing bot built in Python. It uses image detectio
 ### 1. Prerequisites
 
 *   **Python 3.8+**
-*   The game configured to run in full-screen mode at **1920x1080** resolution.
+*   The game running on screen. **Any resolution** works — detection ROIs and templates are auto-scaled from the 1920×1080 reference to your actual window size. Windowed or full-screen, primary or secondary monitor, and non-100% display scaling are all handled automatically.
 
 ### 2. Installation
 
@@ -71,11 +71,33 @@ An automated and open-source fishing bot built in Python. It uses image detectio
 
 1.  Open the game and make sure it is visible on the screen.
 2.  Be at a fishing location. Either stand on an interactable fishing spot or already in the fishing UI.
-2.  Run the bot from the project's root folder:
+3.  Run the bot from the project's root folder:
     ```bash
     python main.py
     ```
-3.  The bot will be ready. Press **7** key to start/pause and **8** key in-game or in the terminal to stop the bot at any time.
+4.  The bot will be ready. Press **7** key to start/pause, **8** to stop, and **9** to toggle the ROI visualizer. Keep the **game window focused** — the bot pauses its input whenever the game is not the active window (this protects the official launcher from accidental clicks).
+
+> **Run as Administrator if the game is elevated.** If the game runs with admin rights but the bot does not, Windows silently ignores the bot's keystrokes/clicks. Use `run_as_admin.bat` (or right-click → *Run as administrator*). The bot prints a warning when it detects this mismatch.
+
+### Diagnose problems with the Doctor
+
+If the bot doesn't seem to detect anything on a given machine, run the **Doctor** first:
+
+```bash
+python doctor.py
+```
+
+It reports your display scaling, admin/elevation state, the detected game window vs. the launcher, the exact capture region, and a live confidence score for every detection template — and saves an annotated `doctor_report.png`. This turns "it doesn't work" into a precise diagnosis.
+
+### Standalone executables (no Python needed)
+
+Build self-contained `.exe` files for sharing with friends:
+
+```bash
+python build.py          # builds dist\Doctor.exe and dist\BPSR-Fishing.exe
+```
+
+`Doctor.exe` is the diagnostic tool; `BPSR-Fishing.exe` is the bot. Detection templates are bundled inside each executable.
 
 ---
 
@@ -91,6 +113,21 @@ This section lists common issues you might encounter and how to solve them.
     1.  **Take a new screenshot** of the failed image (e.g., the broken rod icon).
     2.  **Replace the corresponding template file** in the `src/fishbot/assets/templates/` folder.
     3.  If the problem persists, try **adjusting the `precision` value** in the `src/fishbot/config/detection_config.py` file. Lowering the value (e.g., from `0.8` to `0.7`) can help compensate for minor visual differences.
+
+### The bot detects nothing / does nothing on another PC
+
+*   **Symptom:** Installed and configured correctly, game open and given admin rights, but the bot reacts to nothing.
+*   **Likely Causes & Fixes:**
+    1.  **Run the Doctor** (`python doctor.py` or `Doctor.exe`) — it pinpoints the cause.
+    2.  **Elevation mismatch:** the game runs as Administrator but the bot doesn't, so Windows silently drops the bot's input. Run the bot as administrator (`run_as_admin.bat`).
+    3.  **Display scaling:** handled automatically now (the process is DPI-aware), but verify the annotated `doctor_report.png` lines up with the game.
+    4.  **Wrong window:** the bot attaches to the *game client*, never the launcher. If detection fails, set `BPSR_WINDOW_TITLE` (a regex) to force-match your game window.
+
+### A second copy of the game launches when I start the bot
+
+*   **Symptom:** Running the bot opens another instance of the game, even though it was already open via the official launcher.
+*   **Cause:** With the launcher window focused, the bot's simulated clicks landed on the launcher's **Play** button.
+*   **Fix (built-in):** The bot now (a) attaches only to the real game client and explicitly excludes the launcher, and (b) **pauses all input whenever the game window isn't focused**. Keep the game as the active window while the bot runs.
 
 ### Character won't resume fishing after a timeout state
 
@@ -162,7 +199,9 @@ BPSR-Fishing-Bot/
 
 *   [ ] Graphical user interface (GUI) for easier configuration.
 *   [x] Hotkey system to start/stop the bot.
-*   [ ] Improve resilience to unexpected in-game events.
+*   [x] Improve resilience to unexpected in-game events. *(DS: guard rails wired + fixed, focus guard, exception safety net, detection-driven clicks.)*
+*   [x] Run seamlessly on any Windows machine. *(DS: DPI awareness, resolution-independent ROIs/templates, robust game-vs-launcher detection, elevation handling.)*
+*   [x] Standalone executables + a DEBUG DOCTOR diagnostic tool.
 
 ---
 

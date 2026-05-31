@@ -4,6 +4,7 @@ from src.fishbot.config import Config
 from src.fishbot.core.game.controller import GameController
 from src.fishbot.core.game.detector import Detector
 from src.fishbot.core.interceptors.level_check_interceptor import LevelCheckInterceptor
+from src.fishbot.core.interceptors.focus_guard_interceptor import FocusGuardInterceptor
 from src.fishbot.core.state.impl.casting_bait_state import CastingBaitState
 from src.fishbot.core.state.impl.checking_rod_state import CheckingRodState
 from src.fishbot.core.state.impl.finishing_state import FinishingState
@@ -27,6 +28,13 @@ class FishingBot:
         self.state_machine = StateMachine(self)
 
         self.level_check_interceptor = LevelCheckInterceptor(self)
+
+        # Guard rails, run every frame before the active state (order matters:
+        # focus guard first so we never act while the game isn't focused).
+        self.interceptors = [
+            FocusGuardInterceptor(self),
+            self.level_check_interceptor,
+        ]
 
         self._stopped = False
         self.debug_mode = self.config.bot.debug_mode
@@ -60,8 +68,17 @@ class FishingBot:
 
         loop_start = time.time()
 
-        screen = self.detector.capture_screen()
-        self.state_machine.handle(screen)
+        try:
+            screen = self.detector.capture_screen()
+            self.state_machine.handle(screen)
+        except Exception as e:
+            # Never let a transient error crash the session or leave keys held.
+            self.log(f"[ERROR] ⚠️ Recovered from loop error: {e}")
+            try:
+                self.controller.release_all_controls()
+            except Exception:
+                pass
+            time.sleep(0.5)
 
         if self.target_delay > 0:
             loop_time = time.time() - loop_start

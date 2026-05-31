@@ -1,7 +1,6 @@
 import keyboard
 import multiprocessing
 from src.fishbot.utils.logger import log
-from src.fishbot.utils.roi_visualizer import main as show_roi_visualizer
 
 class Hotkeys:
     def __init__(self, bot):
@@ -33,6 +32,13 @@ class Hotkeys:
             self.visualizer_process.terminate()
             self.visualizer_process = None
         else:
+            # Imported lazily so the bot (and the packaged .exe) can run without
+            # PyQt6 installed; the visualizer is an optional dev tool.
+            try:
+                from src.fishbot.utils.roi_visualizer import main as show_roi_visualizer
+            except Exception as e:
+                log(f"[HOTKEY] ⚠️ ROI visualizer unavailable (PyQt6 missing?): {e}")
+                return
             log("[HOTKEY] Opening the ROI visualizer.")
             # Runs the visualizer in a separate process so it doesn’t block the main UI
             self.visualizer_process = multiprocessing.Process(target=show_roi_visualizer, daemon=True)

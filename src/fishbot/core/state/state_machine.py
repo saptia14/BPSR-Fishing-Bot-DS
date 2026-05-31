@@ -54,8 +54,23 @@ class StateMachine:
             return True
         return False
 
+    def _run_interceptors(self, screen):
+        """Run cross-cutting guard rails before the active state. If one of
+        them handles the frame (e.g. game lost focus, level-check popup), we
+        skip normal state handling this tick."""
+        for interceptor in getattr(self.bot, "interceptors", []):
+            try:
+                if interceptor.check(screen):
+                    return True
+            except Exception as e:
+                log(f"[ERROR] Interceptor {type(interceptor).__name__} failed: {e}")
+        return False
+
     def handle(self, screen):
         if self._check_state_timeout():
+            return
+
+        if self._run_interceptors(screen):
             return
 
         new_state_name = self.current_state.handle(screen)

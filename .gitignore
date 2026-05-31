@@ -20,6 +20,10 @@ build/
 dist/
 *.egg-info/
 pip-wheel-metadata/
+*.spec
+
+# Doctor diagnostic output
+doctor_report.png
 
 # IDE / Editor directories
 # JetBrains IDEs (PyCharm, IntelliJ, etc.)

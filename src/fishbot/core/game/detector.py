@@ -12,10 +12,27 @@ except ImportError:
 
 
 class Detector:
+    """Screen capture + OpenCV template matching.
+
+    Performance choices:
+      * Template grayscale (and any alpha mask) are computed ONCE at load,
+        not on every match.
+      * Templates are resized once to the live resolution, so the same PNGs
+        calibrated at 1920x1080 work on 1440p / 768p / ultrawide.
+      * A small ROI is cropped first, then grayscaled — so we never grayscale
+        a full 1080p frame per lookup.
+      * A failed ROI match falls back to a single match on a *padded* ROI,
+        instead of re-running matchTemplate over hundreds of shifted offsets.
+    """
+
     def __init__(self, config):
         self.unified_config = config
         self.detection_config = config.bot.detection
         self.screen_config = config.bot.screen
+
+        self.scale_x = getattr(self.screen_config, "scale_x", 1.0)
+        self.scale_y = getattr(self.screen_config, "scale_y", 1.0)
+        self._needs_scaling = abs(self.scale_x - 1.0) > 0.01 or abs(self.scale_y - 1.0) > 0.01
 
         self.templates = self._load_templates()
         self.sct = None
@@ -26,9 +43,20 @@ class Detector:
             'height': self.screen_config.monitor_height
         }
 
+    # -- loading -----------------------------------------------------------
+
+    def _resize(self, img, interp):
+        if not self._needs_scaling or img is None:
+            return img
+        return cv.resize(img, None, fx=self.scale_x, fy=self.scale_y, interpolation=interp)
+
     def _load_templates(self):
         loaded = {}
         log("[INFO] 📦 Loading templates...")
+        if self._needs_scaling:
+            log(f"[INFO] 🔍 Scaling templates to live resolution "
+                f"(x{self.scale_x:.3f}, y{self.scale_y:.3f})")
+
         for name in self.detection_config.templates:
             path = self.unified_config.get_template_path(name)
             if not (path and path.exists()):
@@ -36,46 +64,36 @@ class Detector:
                 continue
 
             img = cv.imread(str(path), cv.IMREAD_UNCHANGED)
-            template_img, mask = None, None
+            if img is None:
+                log(f"[INFO] ❌ {name} - failed to read image")
+                continue
 
-            if img.shape[2] == 4:
+            mask = None
+            if img.ndim == 3 and img.shape[2] == 4:
                 log(f"[INFO] ✅ {name} (with transparency mask)")
                 mask = img[:, :, 3]
                 template_img = cv.cvtColor(img, cv.COLOR_BGRA2BGR)
             else:
                 log(f"[INFO] ✅ {name}")
-                template_img = img
-            
-            loaded[name] = (template_img, mask)
+                template_img = img if img.ndim == 3 else cv.cvtColor(img, cv.COLOR_GRAY2BGR)
+
+            # Resize once to the live resolution.
+            shrink = self.scale_x < 1.0 or self.scale_y < 1.0
+            interp = cv.INTER_AREA if shrink else cv.INTER_LINEAR
+            template_img = self._resize(template_img, interp)
+            if mask is not None:
+                mask = self._resize(mask, cv.INTER_NEAREST)
+
+            # Pre-compute grayscale ONCE (the hot path no longer re-converts).
+            template_gray = cv.cvtColor(template_img, cv.COLOR_BGR2GRAY)
+            loaded[name] = {
+                "gray": template_gray,
+                "mask": mask,
+                "shape": template_gray.shape[:2],  # (h, w)
+            }
         return loaded
-    
-    def _generate_concentric_square_pixels(self, center_x, center_y, max_radius):
-        """
-        Generates x, y pixel coordinates for the perimeters of concentric squares.
 
-        Args:
-            center_x (int): The x-coordinate of the center.
-            center_y (int): The y-coordinate of the center.
-            max_radius (int): The radius of the largest square from the center.
-
-        Yields:
-            tuple: (x, y) coordinates for each pixel on the squares.
-        """
-        # Iterate for each square size, starting from a small radius up to max_radius
-        for r in range(1, max_radius + 1):
-            # Coordinates for the four sides of the square
-            # Top side: x from center_x-r to center_x+r, y fixed at center_y-r
-            for x in range(center_x - r, center_x + r + 1):
-                yield x, center_y - r
-            # Bottom side: x from center_x-r to center_x+r, y fixed at center_y+r
-            for x in range(center_x - r, center_x + r + 1):
-                yield x, center_y + r
-            # Left side: x fixed at center_x-r, y from center_y-r+1 to center_y+r-1
-            for y in range(center_y - r + 1, center_y + r):
-                yield center_x - r, y
-            # Right side: x fixed at center_x+r, y from center_y-r+1 to center_y+r-1
-            for y in range(center_y - r + 1, center_y + r):
-                yield center_x + r, y
+    # -- capture -----------------------------------------------------------
 
     def capture_screen(self):
         if self.sct is None:
@@ -86,108 +104,121 @@ class Detector:
         img = np.array(screenshot)
         return cv.cvtColor(img, cv.COLOR_BGRA2BGR)
 
-    def _check_xy(self, search_area, x, y, template_data, template_img, template_name, debug):
-        confidence, location = self._perform_match(search_area, template_data)
+    # -- matching ----------------------------------------------------------
 
-        if confidence is None:
-            return None
-        
-        precision = self.detection_config.precision
-        is_match = confidence >= precision
+    def _perform_match(self, search_gray, template):
+        template_gray = template["gray"]
+        if (search_gray.shape[0] < template_gray.shape[0] or
+                search_gray.shape[1] < template_gray.shape[1]):
+            return None, None
 
-        if debug and confidence >= .3:
-            status = 'MATCH' if is_match else 'NO MATCH'
-            log(f"[DEBUG] [{template_name}] at ({x}, {y}) Confidence: {confidence:.2%} (required: {precision:.0%}) -> {status}")
-
-        if is_match:
-            return self._calculate_center(location, template_img.shape[:2], (x, y))
-
-        return None
-
-    def _get_search_area(self, screen, template_name, radius, debug):
-        template_data = self.templates[template_name]
-        template_img, _ = template_data
-
-        roi_config = self.detection_config.rois.get(template_name)
-        if isinstance(roi_config, str):
-            roi = self.detection_config.rois.get(roi_config)
+        mask = template["mask"]
+        if mask is not None:
+            result = cv.matchTemplate(search_gray, template_gray,
+                                      cv.TM_CCOEFF_NORMED, mask=mask)
+            # Masked matching can yield inf/nan; sanitise before the peak search.
+            result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
         else:
-            roi = roi_config
+            result = cv.matchTemplate(search_gray, template_gray, cv.TM_CCOEFF_NORMED)
 
-        if not roi:
-            return screen, (0, 0)
+        _, confidence, _, location = cv.minMaxLoc(result)
+        return confidence, location
 
-        x, y, w, h = roi
-        screen_h, screen_w = screen.shape[:2]
+    def _resolve_roi(self, template_name, screen_w, screen_h):
+        """Return the scaled, clamped ROI (x, y, w, h) for a template, or None
+        to search the whole frame."""
+        roi_config = self.detection_config.rois.get(template_name)
+        if isinstance(roi_config, str):  # alias to another template's ROI
+            roi_config = self.detection_config.rois.get(roi_config)
+        if not roi_config:
+            return None
+
+        x, y, w, h = self.screen_config.scale_rect(roi_config)
         x = max(0, min(x, screen_w - 1))
         y = max(0, min(y, screen_h - 1))
         w = min(w, screen_w - x)
         h = min(h, screen_h - y)
+        if w <= 0 or h <= 0:
+            return None
+        return (x, y, w, h)
 
-        if w > 0 and h > 0:
-            result = self._check_xy(screen[y:y + h, x:x + w], x, y, template_data, template_img, template_name, debug)
-
-            if result != None:
-                return result
-            
-            if radius > 0:
-                concentric_coords = self._generate_concentric_square_pixels(x, y, radius)
-
-                for pixel in list(concentric_coords):
-                    x, y = pixel
-
-                    result = self._check_xy(screen[y:y + h, x:x + w], x, y, template_data, template_img, template_name, debug)
-
-                    if result != None:
-                        return result
-
-        return None
-
-    def _perform_match(self, search_area, template_data):
-        template_img, mask = template_data
-
-        search_gray = cv.cvtColor(search_area, cv.COLOR_BGR2GRAY)
-        template_gray = cv.cvtColor(template_img, cv.COLOR_BGR2GRAY)
-
-        if search_gray.shape[0] < template_gray.shape[0] or search_gray.shape[1] < template_gray.shape[1]:
-            return None, None
-
-        result = cv.matchTemplate(search_gray, template_gray, cv.TM_CCOEFF_NORMED, mask=mask)
-        _, confidence, _, location = cv.minMaxLoc(result)
-        return confidence, location
-
-    def _calculate_center(self, location, template_shape, offset):
+    def _calculate_center(self, location, template_shape, roi_offset):
         h_t, w_t = template_shape
-        offset_x, offset_y = offset
+        off_x, off_y = roi_offset
         return (
-            location[0] + w_t // 2 + offset_x + self.screen_config.monitor_x,
-            location[1] + h_t // 2 + offset_y + self.screen_config.monitor_y
+            location[0] + w_t // 2 + off_x + self.screen_config.monitor_x,
+            location[1] + h_t // 2 + off_y + self.screen_config.monitor_y,
         )
 
-    def find(self, screen, template_name, radius = 0, debug=False):
-        if template_name not in self.templates:
+    def probe(self, screen, template_name):
+        """Diagnostic helper: return the best confidence and matched flag for a
+        template regardless of the precision threshold. Used by the Doctor."""
+        template = self.templates.get(template_name)
+        if template is None:
+            return {"loaded": False, "confidence": 0.0, "matched": False, "roi": None}
+
+        screen_h, screen_w = screen.shape[:2]
+        roi = self._resolve_roi(template_name, screen_w, screen_h)
+        x, y, w, h = roi if roi else (0, 0, screen_w, screen_h)
+        crop = screen[y:y + h, x:x + w]
+        if crop.size == 0:
+            return {"loaded": True, "confidence": 0.0, "matched": False, "roi": roi}
+        search_gray = cv.cvtColor(crop, cv.COLOR_BGR2GRAY)
+        confidence, _ = self._perform_match(search_gray, template)
+        confidence = float(confidence) if confidence is not None else 0.0
+        return {
+            "loaded": True,
+            "confidence": confidence,
+            "matched": confidence >= self.detection_config.precision,
+            "roi": roi,
+        }
+
+    def find(self, screen, template_name, radius=0, debug=False):
+        """Locate *template_name* on *screen*. Returns the absolute on-screen
+        center (x, y) of the match, or None.
+
+        `radius` (in reference pixels) pads the ROI on a retry, tolerating
+        small UI drift with a single extra match instead of a pixel sweep.
+        """
+        template = self.templates.get(template_name)
+        if template is None:
             log(f"[INFO] ❌ Template '{template_name}' was not loaded.")
             return None
-        
-        return self._get_search_area(screen, template_name, radius, debug)
 
-        # template_data = self.templates[template_name]
-        # template_img, _ = template_data
+        screen_h, screen_w = screen.shape[:2]
+        roi = self._resolve_roi(template_name, screen_w, screen_h)
 
-        # search_area, offset = self._get_search_area(screen, template_name)
-        # confidence, location = self._perform_match(search_area, template_data)
+        precision = self.detection_config.precision
 
-        # if confidence is None:
-        #     return None
+        def try_region(x, y, w, h):
+            crop = screen[y:y + h, x:x + w]
+            if crop.size == 0:
+                return None
+            search_gray = cv.cvtColor(crop, cv.COLOR_BGR2GRAY)
+            confidence, location = self._perform_match(search_gray, template)
+            if confidence is None:
+                return None
+            if debug and confidence >= 0.3:
+                status = 'MATCH' if confidence >= precision else 'NO MATCH'
+                log(f"[DEBUG] [{template_name}] @({x},{y}) "
+                    f"conf {confidence:.2%} (need {precision:.0%}) -> {status}")
+            if confidence >= precision:
+                return self._calculate_center(location, template["shape"], (x, y))
+            return None
 
-        # precision = self.detection_config.precision
-        # is_match = confidence >= precision
+        if roi is None:
+            return try_region(0, 0, screen_w, screen_h)
 
-        # if debug:
-        #     status = 'MATCH' if is_match else 'NO MATCH'
-        #     log(f"[DEBUG] [{template_name}] Confidence: {confidence:.2%} (required: {precision:.0%}) -> {status}")
+        x, y, w, h = roi
+        hit = try_region(x, y, w, h)
+        if hit is not None or radius <= 0:
+            return hit
 
-        # if is_match:
-        #     return self._calculate_center(location, template_img.shape[:2], offset)
-
-        # return None
+        # Single padded retry instead of a concentric pixel sweep.
+        pad_x = int(radius * self.scale_x)
+        pad_y = int(radius * self.scale_y)
+        px = max(0, x - pad_x)
+        py = max(0, y - pad_y)
+        pw = min(screen_w - px, w + 2 * pad_x)
+        ph = min(screen_h - py, h + 2 * pad_y)
+        return try_region(px, py, pw, ph)

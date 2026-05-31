@@ -30,8 +30,17 @@ class CheckingRodState(BotState):
             self.controller.press_key('m')
             time.sleep(1)
 
-            x = 1650 + self.window.monitor_x
-            y = 580 + self.window.monitor_y
+            # Prefer clicking the detected replacement-rod icon; fall back to a
+            # resolution-scaled fixed slot if detection fails.
+            fresh = self.detector.capture_screen()
+            pos = self.detector.find(fresh, "new_rod", 5, debug=self.bot.debug_mode)
+            if pos:
+                x, y = pos
+                self.bot.log(f"[CHECKING_ROD] 🎯 New rod detected at {pos}")
+            else:
+                x, y = self.window.scale_point(1650, 580)
+                self.bot.log("[CHECKING_ROD] ↩️ New rod not detected, using "
+                             f"scaled slot ({x}, {y})")
 
             self.controller.move_to(x, y)
             time.sleep(0.5)
