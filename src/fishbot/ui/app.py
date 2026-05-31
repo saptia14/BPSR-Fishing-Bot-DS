@@ -70,6 +70,12 @@ class BotThread(QThread):
         try:
             from src.fishbot.core.fishing_bot import FishingBot
             self.bot = FishingBot()
+            # Bring the game to the foreground so input reaches it (pressing F9
+            # from the GUI would otherwise leave the GUI focused).
+            hwnd = getattr(self.bot.config.bot.screen, "hwnd", None)
+            if hwnd:
+                winutil.focus_window(hwnd)
+                self.msleep(300)
             self.bot.start()  # warm-up (initialises capture, ~1s)
         except Exception as e:
             self.status.emit("ERROR")

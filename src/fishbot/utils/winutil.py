@@ -225,6 +225,32 @@ def is_window_foreground(hwnd):
     return get_foreground_hwnd() == hwnd
 
 
+def focus_window(hwnd):
+    """Best-effort: bring a window to the foreground so input reaches it.
+    Useful right before the bot starts acting, so pressing F9 'just works'
+    even if the GUI had focus."""
+    if not IS_WINDOWS or not hwnd:
+        return False
+    try:
+        user32 = ctypes.windll.user32
+        SW_RESTORE = 9
+        user32.ShowWindow(hwnd, SW_RESTORE)
+        # AttachThreadInput trick helps SetForegroundWindow succeed across
+        # processes when initiated from a different foreground thread.
+        fg = user32.GetForegroundWindow()
+        cur_tid = user32.GetWindowThreadProcessId(fg, None)
+        tgt_tid = user32.GetWindowThreadProcessId(hwnd, None)
+        if cur_tid and tgt_tid and cur_tid != tgt_tid:
+            user32.AttachThreadInput(cur_tid, tgt_tid, True)
+            user32.SetForegroundWindow(hwnd)
+            user32.AttachThreadInput(cur_tid, tgt_tid, False)
+        else:
+            user32.SetForegroundWindow(hwnd)
+        return True
+    except Exception:
+        return False
+
+
 def get_client_rect_on_screen(hwnd):
     """Return the *client* (content) area of a window in screen pixels as
     (x, y, width, height). This is the exact region we should capture, with

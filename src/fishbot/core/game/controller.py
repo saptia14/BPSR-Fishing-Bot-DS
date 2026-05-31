@@ -92,15 +92,16 @@ class GameController:
 
     def release_all_controls(self):
         log("[CONTROLLER] ⚠️ Releasing all controls...")
-        # Release everything we know we are holding, plus the usual suspects.
-        for button in list(self._held_buttons) + ['left', 'right']:
+        # Release everything we know we are holding, plus the usual suspects,
+        # de-duplicated so we don't emit the same key-up twice.
+        for button in dict.fromkeys(list(self._held_buttons) + ['left', 'right']):
             try:
                 auto.mouseUp(button=button)
             except Exception:
                 pass
         self._held_buttons.clear()
 
-        for key in list(self._held_keys) + ['a', 'd', 's', 'w']:
+        for key in dict.fromkeys(list(self._held_keys) + ['a', 'd', 's', 'w']):
             try:
                 self.key_up(key)
             except Exception:

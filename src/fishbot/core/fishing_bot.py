@@ -27,13 +27,16 @@ class FishingBot:
         self.controller = GameController(self.config)
         self.state_machine = StateMachine(self)
 
+        # Kept for backward-compatibility (states reference it) but NOT run as a
+        # guard rail: the `level_check` template marks the *normal* fishing UI
+        # (StartingState uses it as an "already fishing" signal), so resyncing on
+        # it would lock the bot in an infinite STARTING<->CHECKING_ROD loop.
         self.level_check_interceptor = LevelCheckInterceptor(self)
 
-        # Guard rails, run every frame before the active state (order matters:
-        # focus guard first so we never act while the game isn't focused).
+        # Guard rails, run every frame before the active state. Only the focus
+        # guard is safe to run unconditionally.
         self.interceptors = [
             FocusGuardInterceptor(self),
-            self.level_check_interceptor,
         ]
 
         self._stopped = False
