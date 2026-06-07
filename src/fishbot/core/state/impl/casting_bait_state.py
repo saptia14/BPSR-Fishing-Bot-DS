@@ -27,4 +27,13 @@ class CastingBaitState(BotState):
         self.controller.mouse_up('left')
         time.sleep(2)
 
+        # Safety net: if the game says "select a fishing pole", we cast with no
+        # pole. Go back and equip one instead of waiting for a bite that never
+        # comes (which would time out into the destructive ESC).
+        check = self.detector.capture_screen()
+        if self.detector.find(check, "no_pole_message", 5, debug=self.bot.debug_mode):
+            self.bot.log("[CASTING_BAIT] ⚠️ 'Select a fishing pole' banner — no "
+                         "pole equipped. Going back to replace it (no ESC).")
+            return StateType.CHECKING_ROD
+
         return StateType.WAITING_FOR_BITE

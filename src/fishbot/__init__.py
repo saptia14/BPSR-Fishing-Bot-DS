@@ -1,6 +1,6 @@
 """BPSR Fishing Bot — Demon Soul edition."""
 
-__version__ = "1.1.1"
+__version__ = "1.2.0"
 
 # Detection templates are the English game UI, so the game language must match.
 ENGLISH_REQUIRED_NOTE = (

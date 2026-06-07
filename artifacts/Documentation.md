@@ -111,14 +111,16 @@ Each state's `handle(screen)` inspects the frame and returns the next state. `St
   3. Else if a **level-check** marker is found, the player is already fishing → `CHECKING_ROD`.
   4. Else "wiggle" the character (`S`+`D` tap) every 2s to make the interact button reappear, and keep searching.
 
-- **`CHECKING_ROD`** (`checking_rod_state.py`) — Ensure a usable rod.
-  - Looks for any of `flex_rod` / `sturdy_rod` / `reg_rod` templates. If **none** match → rod is broken: increment `rod_breaks`, open menu (`M`), move+click a fixed equip slot `(1650, 580)` to equip a new rod. Always → `CASTING_BAIT`.
+- **`CHECKING_ROD`** (`checking_rod_state.py`) — Ensure a usable rod (and never cast without one).
+  - Decides using **both** a positive *no-pole* signal (`broken_rod` "Add a pole [M]" button in the HUD, or the `no_pole_message` banner) and the **absence** of a good-rod icon (`flex_rod`/`sturdy_rod`/`reg_rod`). If a good rod is present and no no-pole signal → `CASTING_BAIT`.
+  - Otherwise it **equips a new pole**: open the panel (`M`), find **any** `Use` button (`new_rod`) anywhere in the panel (wide ROI — the panel lists several poles, each with its own button), click it, close the panel, and **verify** (good rod present *or* the no-pole signal gone). Retries up to 3×.
+  - Crucially, if the equip can't be confirmed it **re-enters `CHECKING_ROD` instead of casting** — casting with no pole is what used to trigger the banner and the destructive timeout ESC.
 
 - **`CASTING_BAIT`** (`casting_bait_state.py`) — Cast the line.
-  - Wait `casting_delay`, move mouse to screen center, click to ensure focus, then a quick left mouse press/release to cast → `WAITING_FOR_BITE`.
+  - Wait `casting_delay`, move mouse to screen center, click to ensure focus, then a quick left mouse press/release to cast. **Safety net:** if the `no_pole_message` banner appears right after the cast → back to `CHECKING_ROD` (no ESC); else → `WAITING_FOR_BITE`.
 
 - **`WAITING_FOR_BITE`** (`waiting_for_bite_state.py`) — Watch for the bite cue.
-  - Polls for the **exclamation (❗)** template. On hit: press-and-**hold** left mouse (begins reeling) → `PLAYING_MINIGAME`. Otherwise logs a "waiting" message at most every 5s.
+  - Polls for the **exclamation (❗)** template. On hit: press-and-**hold** left mouse (begins reeling) → `PLAYING_MINIGAME`. **Safety net:** if the `no_pole_message` banner is detected (cast happened with no pole) → release controls and return to `CHECKING_ROD` rather than waiting out the timeout ESC. Otherwise logs a "waiting" message at most every 5s.
 
 - **`PLAYING_MINIGAME`** (`playing_minigame_state.py`) — Play the catch bar. *Core real-time algorithm:*
   - First check for end conditions: `success` template → `fish_caught++`; `failure` (fish escaped) → `fish_escaped++`.
@@ -161,7 +163,7 @@ Cross-cutting safety checks that **run every frame before the active state**, in
 All tunables live here so behavior can change without touching logic.
 
 - **`screen_config.py` → `ScreenConfig`** — Capture geometry. Scores all top-level windows to find the **real game client** (Unity `UnityWndClass` / title match) while **excluding the launcher** (Electron/CEF), reads the exact **client rect** (no title-bar guesswork), and computes the live-vs-reference **scale factors**. Honors `BPSR_WINDOW_TITLE` / `BPSR_WINDOW_CLASS` overrides. Exposes `is_game_foreground()`, `scale_point()`, `scale_rect()`.
-- **`detection_config.py` → `DetectionConfig`** — The detection brain: `precision = 0.65`, the **template name → PNG file** map (15 templates), and the **ROI table** (FullHD-calibrated rectangles per template). Commented-out blocks document a slower "any resolution" mode (all ROIs `None`).
+- **`detection_config.py` → `DetectionConfig`** — The detection brain: `precision = 0.65`, the **template name → PNG file** map (16 templates), and the **ROI table** (FullHD-calibrated rectangles per template). Commented-out blocks document a slower "any resolution" mode (all ROIs `None`).
 - **`bot_config.py` → `BotConfig`** — Behavior knobs: per-state `state_timeouts` (10–30 s), `quick_finish_enabled`, `debug_mode`, `target_fps` (0 = unlimited), and action delays (`default_delay`, `finish_wait_delay`, `casting_delay`).
 - **`paths.py`** — Resolves `PACKAGE_ROOT`, `ASSETS_PATH`, `TEMPLATES_PATH` from the file location.
 - **`__init__.py` → `Config`** — Aggregates the above and exposes `get_template_path(name)`.
@@ -281,6 +283,7 @@ Input is simulated by **`GameController`** (`core/game/controller.py`): `press_k
 | `success.png` | Fish-caught result. |
 | `fish_escaped.png` | Fish-got-away result (`failure`). |
 | `continue.png` | Post-catch "Continue" button. |
+| `no_pole_message.png` | The "Please select the fishing pole you want to use" banner (cast attempted with no pole). |
 
 ---
 
@@ -318,6 +321,7 @@ The DS edition targets one overarching goal: **run seamlessly on any Windows mac
 3. **A second game instance launches via the launcher.** With no focus guard, the bot's center-click landed on the official launcher's *Play* button. Fixed by (a) attaching only to the real game client and **excluding launcher windows**, and (b) the **focus guard** that pauses input whenever the game isn't foreground.
 4. **Dead/broken guard rails.** Upstream created `LevelCheckInterceptor` but never called it, and it referenced non-existent APIs (`bot.set_state`, string state keys, `_current_arrow`). Now interceptors **run every frame** and the level-check guard is corrected.
 5. **Emoji crash on legacy consoles.** Emoji in logs raised `UnicodeEncodeError` on cp1252 consoles. Output is reconfigured to UTF-8 with replacement.
+6. **Broken pole never actually replaced → cast with no pole → destructive ESC.** The rod-replace clicked one fixed point for the `Use` button, which the updated pole panel no longer matches, so nothing equipped; the state then **cast anyway**, the game showed the "Please select the fishing pole" banner, and `WAITING_FOR_BITE` timed out into the ESC that closes the fishing UI. Fixed by: detecting **any** `Use` button across a wide panel ROI and clicking it, **retrying + verifying** the equip, **refusing to cast** until a pole is confirmed, and adding `no_pole_message` banner detection in `CASTING_BAIT`/`WAITING_FOR_BITE` that routes back to `CHECKING_ROD` **without** pressing ESC.
 
 ### Phase 1 — runs anywhere
 - **DPI awareness** (`winutil.enable_dpi_awareness`, Per-Monitor-v2 with fallbacks), enabled before any capture in `main.py` / `doctor.py`.

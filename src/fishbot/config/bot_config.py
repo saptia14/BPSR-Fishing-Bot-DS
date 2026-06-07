@@ -8,8 +8,10 @@ class BotConfig:
         self.detection = DetectionConfig()
 
         self.state_timeouts = {
+            # CHECKING_ROD may open the pole panel and retry the equip a few
+            # times, so it needs more headroom than the other states.
             "STARTING": 10,
-            "CHECKING_ROD": 15,
+            "CHECKING_ROD": 45,
             "CASTING_BAIT": 15,
             "WAITING_FOR_BITE": 25,
             "PLAYING_MINIGAME": 30,
