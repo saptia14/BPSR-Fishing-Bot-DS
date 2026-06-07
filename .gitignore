@@ -41,3 +41,6 @@ Thumbs.db
 
 # Secrets and local configuration
 .env
+
+# Local reference assets (not used by the bot at runtime; kept for future work)
+optional-assets/
