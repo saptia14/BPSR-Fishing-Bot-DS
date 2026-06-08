@@ -50,11 +50,15 @@ class StateMachine:
 
         elapsed_time = time.time() - self.state_start_time
         if elapsed_time > timeout_limit:
-            log(f"[TIMEOUT] 🚨 State '{self.current_state_name.name}' exceeded {timeout_limit}s!")
-            log("[TIMEOUT] 🚨 Releasing controls and pressing 'ESC' to reset.")
+            log(f"[TIMEOUT] ⏱️ State '{self.current_state_name.name}' exceeded {timeout_limit}s!")
+            # NEVER press ESC: in a fishing event ESC leaves the spot entirely and
+            # ruins the whole run. Instead release any held inputs and restart the
+            # cast loop via STARTING, which detects "already fishing" (level_check)
+            # and re-casts without exiting the event — the same recovery the
+            # reference AHK script uses (reload + recast, never ESC).
+            log("[TIMEOUT] 🔄 Releasing controls and restarting the cast loop (no ESC).")
 
             self.bot.controller.release_all_controls()
-            self.bot.controller.press_key('esc')
             time.sleep(0.5)
 
             self.bot.stats.increment('timeouts')
